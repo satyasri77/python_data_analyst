@@ -64,13 +64,12 @@ if prompt := st.chat_input("Ask me to filter, graph, or summarize..."):
         
         # Give the AI the context of the data
         system_context = f"""
-        You are a Data Agent. Dataframe 'df' has columns: {list(st.session_state.df.columns)}.
+        You are a Data Analytics Agent. Dataframe 'df' has columns: {list(st.session_state.df.columns)}.
         User query: {prompt}
         
-        Rules:
-        1. If asked for a graph, use 'matplotlib' or 'pandas' plotting.
-        2. Provide Python code inside triple backticks.
-        3. Provide a brief text explanation of what you found.
+        Give the result of the prompt for example user asked for shape of dataframe the check the shape of uploaded csv or excel and give the result only
+        Similarly if user asked for any graph, give the graph using the data provided.
+        Simlarly if user asked for any filters, give the resultant shape of dataframe.
         """
         
         with st.chat_message("assistant"):
