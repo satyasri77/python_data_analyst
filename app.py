@@ -1,71 +1,105 @@
 import streamlit as st
 import pandas as pd
 import google.generativeai as genai
-import io
-import contextlib
+import matplotlib.pyplot as plt
 
-# --- SETUP ---
-st.set_page_config(page_title="Open Data Agent", layout="wide")
-st.title("🤖 Open Source Data Agent")
+# --- CONFIGURATION ---
+st.set_page_config(page_title="Data Chatbot", layout="centered")
 
-# Sidebar for API Key
+# Initialize session state for chat history and data
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "df" not in st.session_state:
+    st.session_state.df = None
+
+# --- STEP 1: API SETUP ---
 with st.sidebar:
+    st.header("Setup")
     api_key = st.text_input("AIzaSyBWmFj37olGM5UMRXvEVlDEikxvYnZyaC0", type="password")
     if api_key:
         genai.configure(api_key=api_key)
+    st.info("Get a key at aistudio.google.com")
 
-# --- FILE UPLOADER ---
-uploaded_file = st.file_uploader("Upload your CSV file", type="csv")
-
-if uploaded_file and api_key:
-    df = pd.read_csv(uploaded_file)
-    st.write("### Data Preview", df.head(3))
+# --- STEP 2: THE GATEKEEPER (UPLOAD) ---
+if st.session_state.df is None:
+    st.title("📂 Welcome! Let's analyze some data.")
+    st.write("Upload an Excel or CSV file to start the chatbot.")
     
-    # Prompting the LLM
-    user_query = st.text_input("What would you like to know or visualize?")
+    uploaded_file = st.file_uploader("Choose a file", type=['csv', 'xlsx'])
+    
+    if uploaded_file:
+        try:
+            if uploaded_file.name.endswith('.csv'):
+                st.session_state.df = pd.read_csv(uploaded_file)
+            else:
+                st.session_state.df = pd.read_excel(uploaded_file)
+            st.rerun() # Refresh to show the chatbot
+        except Exception as e:
+            st.error(f"Error loading file: {e}")
+    st.stop() # Stops execution here until a file is uploaded
 
-    if user_query:
+# --- STEP 3: THE CHATBOT INTERFACE ---
+st.title("📊 Data Intelligence Agent")
+st.write(f"Active File: `{len(st.session_state.df)} rows loaded`")
+
+# Display Chat History
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+        if "code" in message:
+            st.code(message["code"])
+
+# User Input
+if prompt := st.chat_input("Ask me to filter, graph, or summarize..."):
+    # Add user message to history
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    # Generate Response
+    if not api_key:
+        st.error("Please enter an API key in the sidebar!")
+    else:
         model = genai.GenerativeModel('gemini-1.5-flash')
         
-        # System instructions to ensure the AI only gives us code
-        prompt = f"""
-        You are a Python Data Analyst. The user has a dataframe named 'df'.
-        Columns: {list(df.columns)}
-        Task: {user_query}
+        # Give the AI the context of the data
+        system_context = f"""
+        You are a Data Agent. Dataframe 'df' has columns: {list(st.session_state.df.columns)}.
+        User query: {prompt}
         
-        Provide ONLY the Python code using pandas or matplotlib/seaborn. 
-        Do not explain anything. Do not use backticks like ```python. 
-        Just raw code. If a plot is needed, use plt.show() - I will capture it.
+        Rules:
+        1. If asked for a graph, use 'matplotlib' or 'pandas' plotting.
+        2. Provide Python code inside triple backticks.
+        3. Provide a brief text explanation of what you found.
         """
         
-        with st.spinner("Agent is thinking..."):
-            response = model.generate_content(prompt)
-            generated_code = response.text.strip()
+        with st.chat_message("assistant"):
+            response = model.generate_content(system_context)
+            full_text = response.text
             
-            # Remove markdown formatting if the LLM added it
-            if "```" in generated_code:
-                generated_code = generated_code.split("```")[1].replace("python", "").strip()
+            # Simple logic to extract code from the response
+            code = ""
+            if "```python" in full_text:
+                code = full_text.split("```python")[1].split("```")[0].strip()
+            elif "```" in full_text:
+                code = full_text.split("```")[1].split("```")[0].strip()
 
-        # --- THE EXECUTION ENGINE ---
-        st.write("### Agent's Logic:")
-        st.code(generated_code)
-
-        try:
-            st.write("### Result:")
-            # We execute the code in a local environment where 'df' is available
-            exec_globals = {"df": df, "pd": pd, "st": st}
+            st.markdown(full_text)
             
-            # Using a sub-container to catch plots
-            import matplotlib.pyplot as plt
-            exec(generated_code, exec_globals)
+            # Execute code if found
+            if code:
+                try:
+                    # Provide local variables for execution
+                    exec_context = {"df": st.session_state.df, "pd": pd, "plt": plt, "st": st}
+                    exec(code, exec_context)
+                    # Handle plots
+                    if plt.get_fignums():
+                        st.pyplot(plt.gcf())
+                        plt.clf()
+                except Exception as e:
+                    st.error(f"Failed to run code: {e}")
             
-            # If the code generated a matplotlib figure, show it
-            if plt.get_fignums():
-                st.pyplot(plt.gcf())
-                plt.clf() # Clear for next run
-                
-        except Exception as e:
-            st.error(f"Execution Error: {e}")
-
-elif not api_key:
-    st.info("Please enter your Gemini API key in the sidebar to begin.")
+            # Save to history
+            history_entry = {"role": "assistant", "content": full_text}
+            if code: history_entry["code"] = code
+            st.session_state.messages.append(history_entry)
