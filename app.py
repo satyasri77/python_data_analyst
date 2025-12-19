@@ -60,7 +60,7 @@ if prompt := st.chat_input("Ask me to filter, graph, or summarize..."):
     if not api_key:
         st.error("Please enter an API key in the sidebar!")
     else:
-        model = genai.GenerativeModel('gemini-2.5-pro')
+        model = genai.GenerativeModel('gemini-2.5-flash')
         
         # Give the AI the context of the data
         system_context = f"""
