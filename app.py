@@ -15,7 +15,7 @@ if "df" not in st.session_state:
 # --- STEP 1: API SETUP ---
 with st.sidebar:
     st.header("Setup")
-    api_key = st.text_input("AIzaSyBWmFj37olGM5UMRXvEVlDEikxvYnZyaC0", type="password")
+    api_key = st.text_input("API Key", type="password")
     if api_key:
         genai.configure(api_key=api_key)
     st.info("Get a key at aistudio.google.com")
